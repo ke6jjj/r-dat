@@ -7,18 +7,19 @@ R-DAT can:
 
 * Assemble and decode DAT audio as WAV files and meta-data
 
-When reading a DAT with digital audio, R-DAT produces a WAV file and a textual diagnostic
-output stream, which includes all sub-code blocks and ECC error information. If a block
-can't fully be decoded, it will still produce output but will give you insight into those
-samples which failed error checking.
+   When reading a DAT with digital audio, R-DAT produces a WAV file and a
+   textual diagnostic output stream, which includes all sub-code blocks and ECC
+   error information. If a block can't fully be decoded, it will still produce
+   output but will give you insight into those samples which failed error checking.
 
 * Assemble and decode DDS data
 
-When reading a DAT with DDS (computer data), R-DAT produces binary "basic block" files which
-are the quanta in which data are stored in the DDS format. Using the provided Python utility,
-you can further process the data to re-create the files which were stored on the tape. Any
-badly decoded blocks are marked, but do not stop you from accessing the healthy areas of the
-tape, unlike a traditional DDS drive.
+   When reading a DAT with DDS (computer data), R-DAT produces binary "basic
+   block" files which are the quanta in which data are stored in the DDS format.
+   Using the provided Python utility, you can further process the data to re-create
+   the files which were stored on the tape. Any badly decoded blocks are marked but
+   do not stop you from accessing the healthy areas of the tape, unlike a traditional
+   DDS drive.
 
 # Rationale
 R-DAT is the first, and perhaps only, Open-source tookit for forensic recovery
@@ -63,3 +64,96 @@ In its current state, r-dat is just a software decoder. To use it, you must
 obtain a high-bandwith recording of the electrical signal from a working
 DAT machine, made while the tape in question is being "played". This is not
 an easy task.
+
+# Example output
+
+## An audio session
+
+```
+Absolute time: 00h-00m-10s-20f
+Date     time: 06 1994-07-29 19:39:01
+Errors  C1/C2: 12/0 (all corrected)
+Samples      : L    R
+               ff38 00e2
+               ff69 0123
+               ff73 013c
+               ff62 0166
+               ff75 0195
+               ff7e 018f
+               ff86 0196
+               ffa1 01a5
+
+Absolute time: 00h-00m-10s-21f
+Date     time: 06 1994-07-29 19:39:01
+Errors  C1/C2: 8/0 (all corrected)
+Samples      : L    R
+               00fa 01ee
+               00f6 021f
+               00fe 0237
+               0113 0251
+               00ee 0278
+               00e5 02b4
+               00ea 02ff
+               00b3 0339
+
+Absolute time: 00h-00m-10s-22f
+Date     time: 06 1994-07-29 19:39:01
+Errors  C1/C2: 4/0 (all corrected)
+Samples      : L    R
+               fe31 009f
+               fe4a 006f
+               fe4f 004a
+               fe3d 0025
+               fe37 ffeb
+               fe48 ffc3
+               fe5b ffab
+               fe64 ff91
+```
+
+## A DDS session
+
+```
+Area          : DATA
+Absolute frame: 006830
+Basic Group   : 00289
+Sub frame     : 20
+File          : 0002
+Errors  C1/C2 : 129/17 (all corrected)
+
+Area          : DATA
+Absolute frame: 006831
+Basic Group   : 00289
+Sub frame     : 21
+File          : 0002
+Errors  C1/C2 : 130/15 (all corrected)
+
+Area          : DATA
+Absolute frame: 006832
+Basic Group   : 00289
+Sub frame     : 22
+File          : 0002
+Errors  C1/C2 : 114/11 (all corrected)
+
+Area          : DATA
+Absolute frame: 006833
+Basic Group   : 00289
+Sub frame     : 23 (Last of group) (ECC3)
+File          : 0002
+Errors  C1/C2 : 122/9 (all corrected)
+Group ECC3    : GOOD
+------------------------------------------------------------
+
+Area          : DATA
+Absolute frame: 006834
+Basic Group   : 00290
+Sub frame     : 01
+File          : 0002
+Errors  C1/C2 : 132/17 (all corrected)
+
+Area          : DATA
+Absolute frame: 006835
+Basic Group   : 00290
+Sub frame     : 02
+File          : 0002
+Errors  C1/C2 : 121/12 (all corrected)
+```
