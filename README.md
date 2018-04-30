@@ -3,6 +3,23 @@ A software suite for recovering and decoding data stored on Digital Audio Tape
 (DAT) and Digital Data Storage (DDS) tapes from high-bandwidth digitized
 recordings taken directly from the tape head.
 
+R-DAT can:
+
+* Assemble and decode DAT audio as WAV files and meta-data
+
+When reading a DAT with digital audio, R-DAT produces a WAV file and a textual diagnostic
+output stream, which includes all sub-code blocks and ECC error information. If a block
+can't fully be decoded, it will still produce output but will give you insight into those
+samples which failed error checking.
+
+* Assemble and decode DDS data
+
+When reading a DAT with DDS (computer data), R-DAT produces binary "basic block" files which
+are the quanta in which data are stored in the DDS format. Using the provided Python utility,
+you can further process the data to re-create the files which were stored on the tape. Any
+badly decoded blocks are marked, but do not stop you from accessing the healthy areas of the
+tape, unlike a traditional DDS drive.
+
 # Rationale
 R-DAT is the first, and perhaps only, Open-source tookit for forensic recovery
 of DAT and DDS tapes -- a culturally relevant medium that is quickly going
