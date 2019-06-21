@@ -157,3 +157,157 @@ Sub frame     : 02
 File          : 0002
 Errors  C1/C2 : 121/12 (all corrected)
 ```
+# Theory of operation / Signal flow
+
+```
+     ,------------------,
+     | Rotary Tape Head |
+     `------------------'
+              |
+  [ 9.4 MHz baseband signal ]
+              |
+              v
+ ,-----------------------------------,
+ | Amplifier  (wideband, 20 dB gain) |
+ `-----------------------------------'
+              |
+  [ 9.4 MHz baseband signal ]
+              |
+              v
+ ,--------------------------------------, 
+ | Software-Defined Radio A/D converter |
+ `--------------------------------------'
+              |
+  [ IEEE 32-bit floating point samples ]
+              |
+              v 
+ =========== Software domain =====================
+              |
+     [ Floating point samples ]
+              |
+              v
+ ,---------------------------------------------------------,
+ | NRZI clock detector and symbol slicer                   |
+ |=========================================================|
+ | Observes input samples and discerns when a track stripe |
+ | has likely started, primes a clock detector to follow   |
+ | the signal, then outputs whether a '1' or '0' has been  |
+ | detected in the clock interval.                         |
+ |                                                         |
+ | ( RDATDecoder.cc)                                       |
+ `---------------------------------------------------------'
+            |              |            |
+   [ Clock change ] [ Track change ] [ Bit ]
+            |              |            |
+            v              v            v
+ ,---------------------------------------------------------,
+ | SYNC detector, 10-bit WORD deframer                     |
+ |=========================================================|
+ | Interprets incoming detected bits under the NRZI scheme |
+ | (where an input of '1' signals that the current bit     |
+ | differs from the previous bit, whereas a '0' signals    |
+ | that it remains the same). Watches the decoded stream   |
+ | of signaled bits for the special SYNC pattern, and      |
+ | thereafter, collects every ten bits into a "word" which |
+ | is then produced as the output.                         |
+ |                                                         |
+ | (NRZISyncDeframer.cc)                                   |
+ `---------------------------------------------------------,
+           |                  |
+    [ Track change ] [ 10-bit Word/SYNC ]
+           |                  |
+           v                  v
+ ,---------------------------------------------------------,
+ | 10-to-8 decoder, block assembler                        |
+ |=========================================================|
+ | Decodes incoming 10-bit words into 8-bit bytes, noting  |
+ | if the word is valid or invalid. Starting at every SYNC |
+ | symbol assembles every 36 received bytes into a DAT     |
+ | "block". (For resiliency, it will also start a new      |
+ | block after 36 received bytes, even if no SYNC is       |
+ | Emits blocks as output.                                 |
+ |                                                         |
+ | (DATWordReceiver.cc)                                    |
+ `---------------------------------------------------------'
+           |                 |
+    [ Track change ] [ 36-byte Block ]
+           |                 |
+           v                 v
+ ,---------------------------------------------------------,
+ | Track/swipe assembler                                   |
+ |=========================================================|
+ | Watches incoming track-change signals and 36-byte       |
+ | blocks, performs ECC-1 error correction on each block,  |
+ | inspects the block address field, then places the block |
+ | into its proper place in the 144-block array that makes |
+ | up a "track".                                           |
+ |                                                         |
+ | Uses a state machine that is a bit forgiving if a       |
+ | block's address field is corrupted and assumes that the |
+ | block fits in the slot just after its parent block, if  |
+ | this happens.                                           |
+ |                                                         |
+ | When a full track has been assembled, discerns whether  |
+ | the track is an negative azimuth head swipe ("A") or a  |
+ | positive azimuth head swipe ("B").                      |
+ |                                                         |
+ | Emits the assembled track (and A/B indicator) as output.|
+ |                                                         |
+ | (DATTrackFramer.cc)                                     |
+ `---------------------------------------------------------'
+                             |
+                      [ Track frame ]
+                             |
+                             v
+ ,---------------------------------------------------------,
+ | Track pairer, decoder                                   |
+ |=========================================================|
+ | From here, the code forks into two paths, depending on  |
+ | whether the user has asked for DAT-Audio decoding or    |
+ | Digital Data Storage (DDS 1) decoding.                  |
+ |
+ | In both cases, a state machine waits until it has       |
+ | received both an "A" head swipe frame and a "B" head    |
+ | swipe frame. The absolute time sub-code of the swipes   |
+ | are compared to ensure that they agree, and then the    |
+ | data sections of the two swipes are de-interleaved and  |
+ | assmbled into a full "DAT Frame" consisting of 5824     |
+ | data bytes.                                             |
+ |                                                         |
+ | The code then perfoms ECC-2 error correction on the     |
+ | assembled 5824-byte block, yielding a 5760-byte user-   |
+ | data block.                                             |
+ |                                                         |
+ |---------------------------------------------------------|
+ | DAT Audio pairer, decoder                               |
+ |---------------------------------------------------------|
+ | If the DAT Audio mode has been configured, then         |
+ | interesting sub-code information such as the program    |
+ | number, date and time, ISRC codes, and SMPTE timestamps.|
+ | If so configured, it will also dump the user-data to a  |
+ | WAV file as 16-bit signed, stereo samples.              |----> WAV file
+ |                                                         |
+ | (AudioFrameReceiver.cc)                                 |
+ |                                                         |
+ |---------------------------------------------------------|
+ | DDS 1 pairer, decoder                                   |
+ |---------------------------------------------------------|
+ | If the DDS1 mode has been selected, then incoming DAT   |
+ | frames are inspected for a Basic Group ID sub-code      |
+ | marker (which ranges from 0 to 22). When all 23 basic   |
+ | groups have been collected, their user-data areas are   |
+ | demultiplexed, "de-whitened", and then merged into a    |
+ | 132,480-byte "G1" block. The G1 block is then run       |
+ | a third and final error correction routine (ECC-3),     |
+ | yielding a 126,632-byte block known as a "Basic Group". |
+ |                                                         |
+ | A basic group consists of concatenated data records and |
+ | a "footer" which describes the size of each record.     |
+ |                                                         |
+ | Each assembled basic group is dumped to a '.bin' file,  |
+ | which can be processed later via Python to assemble     |---> "g.bin" file
+ | recovered tape files.                                   |
+ |                                                         |
+ | (DDSFrameReceiver.cc)                                   |
+ `---------------------------------------------------------'
+```
