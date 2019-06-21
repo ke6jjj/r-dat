@@ -65,141 +65,124 @@ obtain a high-bandwith recording of the electrical signal from a working
 DAT machine, made while the tape in question is being "played". This is not
 an easy task.
 
-# Example output
-
-## An audio session
-
-```
-Absolute time: 00h-00m-10s-20f
-Date     time: 06 1994-07-29 19:39:01
-Errors  C1/C2: 12/0 (all corrected)
-Samples      : L    R
-               ff38 00e2
-               ff69 0123
-               ff73 013c
-               ff62 0166
-               ff75 0195
-               ff7e 018f
-               ff86 0196
-               ffa1 01a5
-
-Absolute time: 00h-00m-10s-21f
-Date     time: 06 1994-07-29 19:39:01
-Errors  C1/C2: 8/0 (all corrected)
-Samples      : L    R
-               00fa 01ee
-               00f6 021f
-               00fe 0237
-               0113 0251
-               00ee 0278
-               00e5 02b4
-               00ea 02ff
-               00b3 0339
-
-Absolute time: 00h-00m-10s-22f
-Date     time: 06 1994-07-29 19:39:01
-Errors  C1/C2: 4/0 (all corrected)
-Samples      : L    R
-               fe31 009f
-               fe4a 006f
-               fe4f 004a
-               fe3d 0025
-               fe37 ffeb
-               fe48 ffc3
-               fe5b ffab
-               fe64 ff91
-```
-
-## A DDS session
-
-```
-Area          : DATA
-Absolute frame: 006830
-Basic Group   : 00289
-Sub frame     : 20
-File          : 0002
-Errors  C1/C2 : 129/17 (all corrected)
-
-Area          : DATA
-Absolute frame: 006831
-Basic Group   : 00289
-Sub frame     : 21
-File          : 0002
-Errors  C1/C2 : 130/15 (all corrected)
-
-Area          : DATA
-Absolute frame: 006832
-Basic Group   : 00289
-Sub frame     : 22
-File          : 0002
-Errors  C1/C2 : 114/11 (all corrected)
-
-Area          : DATA
-Absolute frame: 006833
-Basic Group   : 00289
-Sub frame     : 23 (Last of group) (ECC3)
-File          : 0002
-Errors  C1/C2 : 122/9 (all corrected)
-Group ECC3    : GOOD
-------------------------------------------------------------
-
-Area          : DATA
-Absolute frame: 006834
-Basic Group   : 00290
-Sub frame     : 01
-File          : 0002
-Errors  C1/C2 : 132/17 (all corrected)
-
-Area          : DATA
-Absolute frame: 006835
-Basic Group   : 00290
-Sub frame     : 02
-File          : 0002
-Errors  C1/C2 : 121/12 (all corrected)
-```
 # Theory of operation / Signal flow
 
+This section shows how an R-DAT signal should be acquired
+before feeding it to the software, and then how the software
+goes about processing the signal, step by step. In each step,
+the file containing the source code most relevant to that
+step is shown.
+
+## The Rotary Tape Head
+
+R-DAT signals are encoded on DAT tapes as chains of magnetic field
+reversals, generally around 9,408,000 reversals per second. When
+picked up by the R-DAT tape head, these reversals appear as
+momentary pulses. Additionally, I've found that my particular
+DAT player and signal pickup chain tends to output more of a
+square wave rather than a pulse chain. In this square wave signal,
+the magnetic pulses show up as polarity changes in the wave (i.e.
+changes from positive voltages to negative voltages, or vice-
+versa).
+
 ```
-     ,------------------,
-     | Rotary Tape Head |
-     `------------------'
-              |
-  [ 9.4 MHz baseband signal ]
-              |
-              v
- ,-----------------------------------,
+         ,------------------,
+         | Rotary Tape Head |
+         `------------------'
+                  |
+      [ 9.4 MHz baseband signal ]
+                  |
+                  v
+```
+
+## Small Signal Amplifier
+
+```
+,-----------------------------------,
  | Amplifier  (wideband, 20 dB gain) |
  `-----------------------------------'
-              |
-  [ 9.4 MHz baseband signal ]
-              |
-              v
+                  |
+      [ 9.4 MHz baseband signal ]
+                  |
+                  v
+```
+
+The signal directly from the R-DAT tape head is generally to
+weak to digitally sample reliably with off-the-shelf A/D
+samplers. I've found it useful to insert a small signal
+amplifier, such as a MiniCircuits ZFL-500+, to bring the
+signal cleanly up to a level where it can be sampled by
+a typical software-defined radio interface.
+
+```
  ,--------------------------------------, 
  | Software-Defined Radio A/D converter |
+ |======================================|
+ | The A/D converter used must sample   |
+ | the tape head signal at a rate that, |
+ | at the very _least_, is greater than |
+ | twice the R-DAT magnetic reversal    |
+ | rate of 9.408 MHz: 18.816 MHz. In    |
+ | reality, you should give even more   |
+ | room to account for analog filter    |
+ | roll-off and other effects, say, 1.2 |
+ | times this minimum rate, or          |
+ | 22.6 MHz.                            |
+ |                                      |
+ | In my projects I ran my converter at |
+ | its maximum rate: 25 MHz.            |
  `--------------------------------------'
-              |
-  [ IEEE 32-bit floating point samples ]
-              |
-              v 
+                  |
+  [ Digital samples, > 6 bit depth ]
+                  |
+                  v
+ ,--------------------------------------,
+ | Resampler (up-sampler) to 75.264 MHz |
+ |======================================|
+ | To ease clock detection and other    |
+ | synchronous signal extraction        |
+ | techniques, the software currently   |
+ | requires its input signal to be up-  |
+ | sampled to a rate that is exactly    |
+ | equal to eight times the base R-DAT  |
+ | signal rate: 75.264 MHz.             |
+ |                                      |
+ | In my projects, I used a GNURadio    |
+ | rational resampler block to convert  |
+ | from the 25 MHz A/D sample rate up   |
+ | to the desired 75.264 MHz.           |
+ |                                      |
+ | In this process I also converted the |
+ | samples from my A/D unit's 16-bit    |
+ | format into IEEE 32-bit floating     |
+ | point, native-endian output.         |
+ `--------------------------------------'
+                    |
+       [ IEEE Floats @ 76.264 MHz ]
+                    |
+                    | 
  =========== Software domain =====================
-              |
-     [ Floating point samples ]
-              |
-              v
+                    |
+                    v 
  ,---------------------------------------------------------,
- | NRZI clock detector and symbol slicer                   |
+ | Magnetic pulse clock detector and symbol slicer         |
  |=========================================================|
- | Observes input samples and discerns when a track stripe |
- | has likely started, primes a clock detector to follow   |
- | the signal, then outputs whether a '1' or '0' has been  |
- | detected in the clock interval.                         |
+ | Observes input samples and performs two simultaneous    |
+ | tasks:                                                  |
+ |   1. It performs simple energy and envelope following   |
+ |      to determine when a new head swipe track appears   |
+ |      to start and stop.                                 |
+ |   2. It primes a clock detector to follow the signal,   |
+ |      then, at each clock interval, outputs a '1' if a   |
+ |      magnetic reversal has been detected in that        |
+ |      interval, or a '0' if one has not.                 |
  |                                                         |
  | ( RDATDecoder.cc)                                       |
  `---------------------------------------------------------'
-            |              |            |
-   [ Clock change ] [ Track change ] [ Bit ]
-            |              |            |
-            v              v            v
+               |              |            |
+      [ Clock change ] [ Track change ] [ Bit ]
+               |              |            |
+               v              v            v
  ,---------------------------------------------------------,
  | SYNC detector, 10-bit WORD deframer                     |
  |=========================================================|
@@ -213,10 +196,10 @@ Errors  C1/C2 : 121/12 (all corrected)
  |                                                         |
  | (NRZISyncDeframer.cc)                                   |
  `---------------------------------------------------------,
-           |                  |
-    [ Track change ] [ 10-bit Word/SYNC ]
-           |                  |
-           v                  v
+                 |                  |
+         [ Track change ] [ 10-bit Word/SYNC ]
+                 |                  |
+                 v                  v
  ,---------------------------------------------------------,
  | 10-to-8 decoder, block assembler                        |
  |=========================================================|
@@ -310,4 +293,97 @@ Errors  C1/C2 : 121/12 (all corrected)
  |                                                         |
  | (DDSFrameReceiver.cc)                                   |
  `---------------------------------------------------------'
+```
+
+# Example output
+
+## An audio session
+
+```
+Absolute time: 00h-00m-10s-20f
+Date     time: 06 1994-07-29 19:39:01
+Errors  C1/C2: 12/0 (all corrected)
+Samples      : L    R
+               ff38 00e2
+               ff69 0123
+               ff73 013c
+               ff62 0166
+               ff75 0195
+               ff7e 018f
+               ff86 0196
+               ffa1 01a5
+
+Absolute time: 00h-00m-10s-21f
+Date     time: 06 1994-07-29 19:39:01
+Errors  C1/C2: 8/0 (all corrected)
+Samples      : L    R
+               00fa 01ee
+               00f6 021f
+               00fe 0237
+               0113 0251
+               00ee 0278
+               00e5 02b4
+               00ea 02ff
+               00b3 0339
+
+Absolute time: 00h-00m-10s-22f
+Date     time: 06 1994-07-29 19:39:01
+Errors  C1/C2: 4/0 (all corrected)
+Samples      : L    R
+               fe31 009f
+               fe4a 006f
+               fe4f 004a
+               fe3d 0025
+               fe37 ffeb
+               fe48 ffc3
+               fe5b ffab
+               fe64 ff91
+```
+
+## A DDS session
+
+```
+Area          : DATA
+Absolute frame: 006830
+Basic Group   : 00289
+Sub frame     : 20
+File          : 0002
+Errors  C1/C2 : 129/17 (all corrected)
+
+Area          : DATA
+Absolute frame: 006831
+Basic Group   : 00289
+Sub frame     : 21
+File          : 0002
+Errors  C1/C2 : 130/15 (all corrected)
+
+Area          : DATA
+Absolute frame: 006832
+Basic Group   : 00289
+Sub frame     : 22
+File          : 0002
+Errors  C1/C2 : 114/11 (all corrected)
+
+Area          : DATA
+Absolute frame: 006833
+Basic Group   : 00289
+Sub frame     : 23 (Last of group) (ECC3)
+File          : 0002
+Errors  C1/C2 : 122/9 (all corrected)
+Group ECC3    : GOOD
+------------------------------------------------------------
+
+Area          : DATA
+Absolute frame: 006834
+Basic Group   : 00290
+Sub frame     : 01
+File          : 0002
+Errors  C1/C2 : 132/17 (all corrected)
+
+Area          : DATA
+Absolute frame: 006835
+Basic Group   : 00290
+Sub frame     : 02
+File          : 0002
+Errors  C1/C2 : 121/12 (all corrected)
 ```
