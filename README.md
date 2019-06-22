@@ -88,12 +88,50 @@ step is shown.
 R-DAT signals are encoded on DAT tapes as chains of magnetic field
 reversals, generally around 9,408,000 reversals per second. When
 picked up by the R-DAT tape head, these reversals appear as
-momentary pulses. Additionally, I've found that my particular
-DAT player and signal pickup chain tends to output more of a
-square wave rather than a pulse chain. In this square wave signal,
-the magnetic pulses show up as polarity changes in the wave (i.e.
-changes from positive voltages to negative voltages, or vice-
-versa).
+momentary pulses.
+
+## Tape fields and voltages expressed
+
+```
+N = North-going field 
+S = South-going field
+
+        |
+Tape    |-------------------------------------------------------------------
+surface |   nNNn sSSs nNNn sSSs nNNn sSSs nNNn sSSs nNNn sSSSSSSSs nNNn
+        |-------------------------------------------------------------------
+        |
+Head    |
+style A |   ,,      ,,,,      ,,,,      ,,,,      ,,,,           ,,,,
+output  |   ||      |  |      |  |      |  |      |  |           |  |
+signal  |---''-,  ,-'  '-,  ,-'  '-,  ,-'  '-,  ,-'  '-,  ,------'  '--
+        |      |  |      |  |      |  |      |  |      |  |     
+        |      ''''      ''''      ''''      ''''      ''''     
+Head    |
+style B |    ,,        ,,        ,,        ,,        ,,             ,,
+output  |   /  \      /  \      /  \      /  \      /  \           /  \
+signal  |--'    \    /    \    /    \    /    \    /    \         /
+        |        \__/      \__/      \__/      \__/      \_______/
+        |
+        
+                                   --- TIME --->
+```
+
+I've found that the literature describing how R-DAT magnetizes the tape and
+how that magnetization pattern appears after being picked up by the tape
+head can be a bit conflicting. I've seen one style of pickup
+illustrated, yet, in practice, I've seen a different style actually being
+used. The preceeding illustration shows how magnetic fields are stored on
+the tape and how these two styles of pickup will interpret that pattern.
+
+Style "A" is the theoretical pickup style, which is described as a time-differential
+probe, interprets the magnetic fields on the tape, while style "B" illustrates
+the signal that I've seen in my player. It would more accurately be described as a
+integrated version of the differential signal.
+
+Whereas style "A" shows more of a pulse chain, where pulses in voltage occur when
+the field is _changing_, style "B" shows more of a square wave signal, where voltage
+plateaus appear where the magnetic field is the strongest.
 
 ## Small Signal Amplifier
 
