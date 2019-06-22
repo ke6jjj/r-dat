@@ -75,16 +75,6 @@ step is shown.
 
 ## The Rotary Tape Head
 
-R-DAT signals are encoded on DAT tapes as chains of magnetic field
-reversals, generally around 9,408,000 reversals per second. When
-picked up by the R-DAT tape head, these reversals appear as
-momentary pulses. Additionally, I've found that my particular
-DAT player and signal pickup chain tends to output more of a
-square wave rather than a pulse chain. In this square wave signal,
-the magnetic pulses show up as polarity changes in the wave (i.e.
-changes from positive voltages to negative voltages, or vice-
-versa).
-
 ```
          ,------------------,
          | Rotary Tape Head |
@@ -95,10 +85,24 @@ versa).
                   v
 ```
 
+R-DAT signals are encoded on DAT tapes as chains of magnetic field
+reversals, generally around 9,408,000 reversals per second. When
+picked up by the R-DAT tape head, these reversals appear as
+momentary pulses. Additionally, I've found that my particular
+DAT player and signal pickup chain tends to output more of a
+square wave rather than a pulse chain. In this square wave signal,
+the magnetic pulses show up as polarity changes in the wave (i.e.
+changes from positive voltages to negative voltages, or vice-
+versa).
+
 ## Small Signal Amplifier
 
 ```
-,-----------------------------------,
+                  |
+      [ 9.4 MHz baseband signal ]
+                  |
+                  v
+ ,-----------------------------------,
  | Amplifier  (wideband, 20 dB gain) |
  `-----------------------------------'
                   |
@@ -114,49 +118,62 @@ amplifier, such as a MiniCircuits ZFL-500+, to bring the
 signal cleanly up to a level where it can be sampled by
 a typical software-defined radio interface.
 
+## Software-Defined Radio A/D converter
+
 ```
- ,--------------------------------------, 
- | Software-Defined Radio A/D converter |
- |======================================|
- | The A/D converter used must sample   |
- | the tape head signal at a rate that, |
- | at the very _least_, is greater than |
- | twice the R-DAT magnetic reversal    |
- | rate of 9.408 MHz: 18.816 MHz. In    |
- | reality, you should give even more   |
- | room to account for analog filter    |
- | roll-off and other effects, say, 1.2 |
- | times this minimum rate, or          |
- | 22.6 MHz.                            |
- |                                      |
- | In my projects I ran my converter at |
- | its maximum rate: 25 MHz.            |
- `--------------------------------------'
                   |
-  [ Digital samples, > 6 bit depth ]
+      [ 9.4 MHz baseband signal ]
                   |
                   v
+ ,--------------------------------------, 
+ | Software-Defined Radio A/D converter |
+ `--------------------------------------'
+                  |
+   [ Digital samples, > 6 bit depth ]
+                  |
+                  v
+```
+Once the signal is amplified to an adequate level, it is sampled
+by a high-speed A/D converter, such as those available in off-the-shelf
+software-defined radio boards, like National Instruments' "URSP".
+
+The A/D converter used must sample the tape head signal at a rate that,
+at the theoretically very _least_, is greater than twice the R-DAT magnetic
+reversal rate of 9.408 MHz. This means a sample rate of at least 18.816 MHz.
+In practice, you should give even more room than this bare minimum to account
+for analog filter roll-off and other effects. My rule of thumb is to sample
+at at least 1.2 times this minimum rate, or 22.6 MHz.
+
+In my projects I ran my converter at its maximum rate or 25 MHz.
+
+## Resampler, depth expander
+
+```
+                    |
+    [ Digital samples, > 6 bit depth ]
+                    |
+                    v
  ,--------------------------------------,
  | Resampler (up-sampler) to 75.264 MHz |
- |======================================|
- | To ease clock detection and other    |
- | synchronous signal extraction        |
- | techniques, the software currently   |
- | requires its input signal to be up-  |
- | sampled to a rate that is exactly    |
- | equal to eight times the base R-DAT  |
- | signal rate: 75.264 MHz.             |
- |                                      |
- | In my projects, I used a GNURadio    |
- | rational resampler block to convert  |
- | from the 25 MHz A/D sample rate up   |
- | to the desired 75.264 MHz.           |
- |                                      |
- | In this process I also converted the |
- | samples from my A/D unit's 16-bit    |
- | format into IEEE 32-bit floating     |
- | point, native-endian output.         |
  `--------------------------------------'
+                    |
+       [ IEEE Floats @ 76.264 MHz ]
+                    |
+                    v
+ ```
+To make clock detection and other signal extraction techniques in the
+software easier to perform, the software currently requires its input
+signal be sampled to a rate that is exactly equal to eight times the
+base R-DAT signal rate: 75.264 MHz. Additionally, it requires that the
+input be in native-endian IEEE 32-bit floating point format.
+
+In my projects, I used a GNURadio rational resampler block to convert
+from the 25 MHz A/D sample rate up to the desired 75.264 MHz. In this process I
+also converted the samples from my A/D unit's 16-bit format into IEEE 32-bit
+floating point format, natively-endian output.
+
+## Enter the Software Domain: Magnetic pulse detector
+```
                     |
        [ IEEE Floats @ 76.264 MHz ]
                     |
@@ -166,56 +183,96 @@ a typical software-defined radio interface.
                     v 
  ,---------------------------------------------------------,
  | Magnetic pulse clock detector and symbol slicer         |
- |=========================================================|
- | Observes input samples and performs two simultaneous    |
- | tasks:                                                  |
- |   1. It performs simple energy and envelope following   |
- |      to determine when a new head swipe track appears   |
- |      to start and stop.                                 |
- |   2. It primes a clock detector to follow the signal,   |
- |      then, at each clock interval, outputs a '1' if a   |
- |      magnetic reversal has been detected in that        |
- |      interval, or a '0' if one has not.                 |
- |                                                         |
  | ( RDATDecoder.cc)                                       |
  `---------------------------------------------------------'
-               |              |            |
-      [ Clock change ] [ Track change ] [ Bit ]
-               |              |            |
-               v              v            v
+               |              |                |
+      [ Clock change ] [ Track start/stop ] [ Bit ]
+               |              |                |
+               v              v                v
+```
+Now that the input has been digitized and formatted correctly, the software
+takes over. From here on, I will describe the software components as
+signal blocks, showing each block's input signals and output signals.
+
+Signal processing begins with a magnetic pulse detector, clock detector,
+and general energy detector. These are really divided into two separate
+tasks.
+
+### Energy/envelope following
+
+The energy/envelope follower monitors the incoming samples to discern when
+a head pass across the tape begins and ends. This is an important step
+because the interpretation of the magnetic pulses that make up the R-DAT
+signal depends somewhat on the pulse's position within the head pass. The
+follower outputs just one signal: a head pass appears to have started,
+and a head pass appears to have completed.
+
+### Clock detection and symbol decider
+
+Alongside the head pass detector, the software runs the input samples
+through a clock detection algorithm and, thereafter, a symbol "slicer".
+
+Each R-DAT head swipe begins with a simple repeated pulse train that
+carries no information other than the clock signal of the R-DAT machine
+which wrote the tape. The software trains itself on this sequence so
+that, when the more important information-bearing sections of the head
+swipe begin, the software will be correctly synchronized with the signal.
+
+This is necessary because R-DAT signals information bits merely by the
+presence or absence of a magnetic reversal during each time period. When
+correctly synchronized, the software will accurately be able to report
+that a pulse is _absent_ during a period, rather than incorrectly
+determining that it is absent because it was merely looking at the wrong
+time.
+
+In the end, clock detector and symbol slicer emit two signals: a
+"clock has started/clock has stopped" signal, and a "bit detected
+(1 or 0)" signal.
+
+## NRZI-decoder, SYNC detector, 10-bit word framer
+
+```
+               |              |                |
+      [ Clock change ] [ Track start/stop ] [ Bit ]
+               |              |                |
+               v              v                v
  ,---------------------------------------------------------,
  | SYNC detector, 10-bit WORD deframer                     |
- |=========================================================|
- | Interprets incoming detected bits under the NRZI scheme |
- | (where an input of '1' signals that the current bit     |
- | differs from the previous bit, whereas a '0' signals    |
- | that it remains the same). Watches the decoded stream   |
- | of signaled bits for the special SYNC pattern, and      |
- | thereafter, collects every ten bits into a "word" which |
- | is then produced as the output.                         |
- |                                                         |
  | (NRZISyncDeframer.cc)                                   |
- `---------------------------------------------------------,
-                 |                  |
-         [ Track change ] [ 10-bit Word/SYNC ]
-                 |                  |
-                 v                  v
+ `---------------------------------------------------------'
+                 |                       |
+         [ Track start/stop ]     [ 10-bit Word ]
+                 |                       |
+                 v                       v
+```
+Interprets incoming detected bits under the NRZI scheme
+(where an input of '1' signals that the current bit
+differs from the previous bit, whereas a '0' signals
+that it remains the same). Watches the decoded stream
+of signaled bits for the special SYNC pattern, and
+thereafter, collects every ten bits into a "word" which
+is then produced as the output.
+
+## 10-to-8 decoder, block assembler
+
+```
  ,---------------------------------------------------------,
  | 10-to-8 decoder, block assembler                        |
- |=========================================================|
- | Decodes incoming 10-bit words into 8-bit bytes, noting  |
- | if the word is valid or invalid. Starting at every SYNC |
- | symbol assembles every 36 received bytes into a DAT     |
- | "block". (For resiliency, it will also start a new      |
- | block after 36 received bytes, even if no SYNC is       |
- | Emits blocks as output.                                 |
- |                                                         |
  | (DATWordReceiver.cc)                                    |
  `---------------------------------------------------------'
            |                 |
     [ Track change ] [ 36-byte Block ]
            |                 |
            v                 v
+```
+Decodes incoming 10-bit words into 8-bit bytes, noting
+if the word is valid or invalid. Starting at every SYNC
+symbol assembles every 36 received bytes into a DAT
+"block". (For resiliency, it will also start a new
+block after 36 received bytes, even if no SYNC is
+Emits blocks as output.
+
+```
  ,---------------------------------------------------------,
  | Track/swipe assembler                                   |
  |=========================================================|
