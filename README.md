@@ -237,7 +237,20 @@ and general energy detector. These are really divided into two separate
 tasks.
 
 ### Energy/envelope following
+```
+                ,- POSITIVE azimuth head pass
+               /                        ,- NEGATIVE azimuth head pass
+              /                        /
+          |||||||                  ||||||| 
+--------<|||||||||>--------------<|||||||||>-------------
+          |||||||  ^               |||||||  ^
+         ^         |              ^         |
+         |         |              |         |
+         |         Track STOP     |         Track STOP
+         Track START              Track START
 
+                                   --- TIME --->
+```
 The energy/envelope follower monitors the incoming samples to discern when
 a head pass across the tape begins and ends. This is an important step
 because the interpretation of the magnetic pulses that make up the R-DAT
@@ -287,10 +300,10 @@ In the end, clock detector and symbol slicer emit two signals: a
 ## NRZI-decoder, SYNC detector, 10-bit word framer
 
 ```
-               |              |                |
-      [ Clock change ] [ Track start/stop ] [ Bit ]
-               |              |                |
-               v              v                v
+               |                |               |
+       [ Clock change ] [ Track start/stop ] [ Bit ]
+               |                |               |
+               v                v               v
  ,---------------------------------------------------------,
  | SYNC detector, 10-bit WORD deframer                     |
  | (NRZISyncDeframer.cc)                                   |
