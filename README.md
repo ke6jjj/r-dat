@@ -391,23 +391,35 @@ Emits blocks as output.
  |---------------------------------------------------------|
  | If the DAT Audio mode has been configured, then         |
  | interesting sub-code information such as the program    |
- | number, date and time, ISRC codes, and SMPTE timestamps.|
- | If so configured, it will also dump the user-data to a  |
- | WAV file as 16-bit signed, stereo samples.              |----> WAV file
+ | number, date and time, ISRC codes, and SMPTE timestamps |
+ | are extracted and printed to stdout.                    |
+ |                                                         |
+ | If so configured, it will also dump the user-data area  |
+ | of the frame to a WAV file, assuming that the data are  |
+ | 16-bit, signed, little-endian, L/R interleaved stereo   |
+ | samples.                                                |----> WAV file
  |                                                         |
  | (AudioFrameReceiver.cc)                                 |
  |                                                         |
  |---------------------------------------------------------|
  | DDS 1 pairer, decoder                                   |
  |---------------------------------------------------------|
- | If the DDS1 mode has been selected, then incoming DAT   |
- | frames are inspected for a Basic Group ID sub-code      |
- | marker (which ranges from 0 to 22). When all 23 basic   |
- | groups have been collected, their user-data areas are   |
- | demultiplexed, "de-whitened", and then merged into a    |
- | 132,480-byte "G1" block. The G1 block is then run       |
- | a third and final error correction routine (ECC-3),     |
- | yielding a 126,632-byte block known as a "Basic Group". |
+ | If the DDS1 mode has been selected, then the subcode    |
+ | areas of incoming DAT frames are searched to find a     |
+ | "Basic Group subframe number" marker, which should      |
+ | march up sequentially, from 0 to 22. When all 23        |
+ | subframes have been collected, their user-data areas    |
+ | are demultiplexed an merged into a 132,480-byte         |
+ | structure known as a "G3 block". The G3 block is        |
+ | "dewhitened", which undoes a scrambling step that is    |
+ | performed on the data written to tape to ensure that    |
+ | long strings of repeating bytes don't inadvertantly     |
+ | produce a magnetic signal that is devoid of transitions.|
+ | The dewhitened G3 block has now become a "G2 block".    |
+ |                                                         |
+ | The G2 block undergoes a third and final error          |
+ | correction pass (ECC-3), yielding a 126,632-byte block  |
+ | known as a "G1 block" or "Basic Group".                 |
  |                                                         |
  | A basic group consists of concatenated data records and |
  | a "footer" which describes the size of each record.     |
