@@ -106,7 +106,7 @@ style A |   ,,      ,,,,      ,,,,      ,,,,      ,,,,           ,,,,
 output  |   ||      |  |      |  |      |  |      |  |           |  |
 signal  |---''-,  ,-'  '-,  ,-'  '-,  ,-'  '-,  ,-'  '-,  ,------'  '--
         |      |  |      |  |      |  |      |  |      |  |     
-        |      ''''      ''''      ''''      ''''      ''''     
+        |      ''''      ''''      ''''      ''''      ''''
 Head    |
 style B |    ,,        ,,        ,,        ,,        ,,             ,,
 output  |   /  \      /  \      /  \      /  \      /  \           /  \
@@ -246,7 +246,24 @@ follower outputs just one signal: a head pass appears to have started,
 and a head pass appears to have completed.
 
 ### Clock detection and symbol decider
-
+```
+                                       INPUT
+        |
+Head    |
+style B |    ,,        ,,        ,,        ,,        ,,             ,,
+output  |   /  \      /  \      /  \      /  \      /  \           /  \
+signal  |--'    \    /    \    /    \    /    \    /    \         /
+        |        \__/      \__/      \__/      \__/      \_______/
+        |
+        |
+        |    |    |    |    |    |    |    |    |    |    |    |    |
+Symbol  |    | 1  | 1  | 1  | 1  | 1  | 1  | 1  | 1  | 1  | 0  | 1  |  
+        |    |    |    |    |    |    |    |    |    |    |    |    |
+        |     (      PREAMBLE                            ) ( SYNC WORD ...
+                                   INTERPRETATION
+                                   
+                                   --- TIME --->
+```
 Alongside the head pass detector, the software runs the input samples
 through a clock detection algorithm and, thereafter, a symbol "slicer".
 
